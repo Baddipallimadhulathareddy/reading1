@@ -108,14 +108,12 @@ async function loadSentence() {
       const s = await fetchOneSentenceWithTimeout(4000);
       if (s) {
         currentSentence = s;
-        playSentence(); // Play immediately on load
         return;
       }
     } else {
       currentSentence = pool.shift();
       pool.push(currentSentence);
       localStorage.setItem(POOL_KEY, JSON.stringify(pool));
-      playSentence(); // Play immediately on load
       return;
     }
   } catch (err) {
@@ -123,8 +121,7 @@ async function loadSentence() {
   }
 
   currentSentence = fallbackSentences[Math.floor(Math.random() * fallbackSentences.length)];
-  playSentence(); // Play immediately on load
-  resultDiv.textContent = 'New sentence loaded. Listen and speak!';
+  resultDiv.textContent = 'New sentence loaded. Click Play Again to listen, then Speak Now.';
 }
 
 async function fetchOneSentenceWithTimeout(ms = 4000) {
@@ -167,7 +164,7 @@ function startListening() {
   recognition.onresult = function (event) {
     const spoken = event.results[0][0].transcript;
     analyzeSpeech(spoken);
-    playSentence(); // Play back after user speaks
+    playSentence(); // Play back only after user speaks
   };
 
   recognition.onerror = function (ev) {
@@ -191,7 +188,9 @@ function playSentence() {
   utterance.rate = 0.9; // Slow for clarity
   utterance.pitch = 1;
   window.speechSynthesis.speak(utterance);
-  resultDiv.textContent = 'Playing sentence…';
+  if (resultDiv.textContent !== 'Listening… Please speak the sentence you heard.') {
+    resultDiv.textContent = 'Playing sentence…';
+  }
 }
 
 function analyzeSpeech(userSpeech) {
