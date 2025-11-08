@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Listening Skill Tester — Hearing Challenge</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { margin:0; font-family: 'Segoe UI', sans-serif; display:flex; align-items:center; justify-content:center; height:100vh;
+           background: linear-gradient(135deg,#c8f7d6,#a3e9a6); }
+    .card { width:520px; background:#f9fff9; border-radius:18px; padding:28px; box-shadow:0 10px 30px rgba(0,0,0,0.12); text-align:center; }
+    h2 { margin:0 0 16px; font-size:22px; }
+    .sentence { display:none; } /* Ensure sentenceBox is completely hidden */
+    .controls { display:flex; gap:12px; justify-content:center; margin-bottom:12px; }
+    button { background:#6ad07a; border:none; padding:10px 18px; border-radius:24px; cursor:pointer; font-weight:600; }
+    .secondary { background:#9be8a6; }
+    .status { color:#333; margin-top:8px; min-height:1.4em; }
+    .small { font-size:13px; color:#666; margin-top:6px; }
+    pre { text-align:left; white-space:pre-wrap; word-break:break-word; background:#f1f6f1; padding:10px; border-radius:8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>🎧 Listening Skill Tester — Hearing Challenge</h2>
+    <div id="sentenceBox" class="sentence"></div> <!-- Empty and hidden -->
+    <div class="controls">
+      <button id="speakBtn">🎙 Speak Now</button>
+      <button id="playBtn">🔊 Play Again</button>
+      <button id="nextBtn" class="secondary">Next Sentence 🔁</button>
+    </div>
+    <div id="result" class="status"></div>
+    <div class="small">Tip: Open DevTools → Network to inspect API requests. Microphone requires HTTPS or localhost.</div>
+    <div id="debug" style="display:none"><pre id="debugPre"></pre></div>
+  </div>
+
+<script>
+/*
+ Robust sentence loader:
+  - tries API
+  - stores a pool in localStorage
+  - falls back to embedded list if necessary
+*/
+
+const API_URL = 'https://api.quotable.io/random';
+const POOL_KEY = 'listening_sentence_pool_v1';
+const POOL_SIZE = 8;
+
+const fallbackSentences = [
+  "The quick brown fox jumps over the lazy dog.",
+  "Learning languages improves your brain and confidence.",
+  "Please remember to lock the door when you leave.",
+  "She sells seashells by the seashore every summer.",
+  "Technology changes fast, but fundamentals remain the same.",
+  "I would like a cup of coffee, please.",
+  "Simple daily practice leads to steady improvement.",
+  "Practice speaking slowly and clearly for better results."
+];
+
+let pool = [];
+let currentSentence = "";
+
+const sentenceBox = document.getElementById('sentenceBox');
+const resultDiv = document.getElementById('result');
+const debugPre = document.getElementById('debugPre');
+
+document.getElementById('nextBtn').addEventListener('click', loadSentence);
+document.getElementById('speakBtn').addEventListener('click', startListening);
+document.getElementById('playBtn').addEventListener('click', playSentence);
+
+init();
+
+async function init() {
+  const stored = localStorage.getItem(POOL_KEY);
+  if (stored) {
+    try { pool = JSON.parse(stored); } catch(e) { pool = []; }
+  }
+
+  if (!pool || pool.length < 1) {
+    try {
+      await prefillPool(POOL_SIZE);
+    } catch (err) {
+      console.warn('Prefill failed:', err);
+    }
+  }
+
+  loadSentence();
+}
+
+async function prefillPool(n) {
+  const fetched = [];
+  for (let i = 0; i < n; i++) {
+    try {
+      const s = await fetchOneSentenceWithTimeout(4000);
+      if (s) fetched.push(s);
+    } catch (err) {
+      console.warn('fetchOneSentenceWithTimeout failed:', err);
+      break;
+    }
+  }
+  pool = Array.from(new Set([...fetched, ...(pool||[]), ...fallbackSentences]));
+  localStorage.setItem(POOL_KEY, JSON.stringify(pool));
+  logDebug('Prefilled pool with ' + pool.length + ' sentences');
+}
+
+async function loadSentence() {
+  resultDiv.textContent = '';
+  try {
+    if (!pool || pool.length === 0) {
+      const s = await fetchOneSentenceWithTimeout(4000);
+      if (s) {
+        currentSentence = s;
+        playSentence(); // Play immediately on load
+        return;
+      }
+    } else {
+      currentSentence = pool.shift();
+      pool.push(currentSentence);
+      localStorage.setItem(POOL_KEY, JSON.stringify(pool));
+      playSentence(); // Play immediately on load
+      return;
+    }
+  } catch (err) {
+    console.error('loadSentence error:', err);
+  }
+
+  currentSentence = fallbackSentences[Math.floor(Math.random() * fallbackSentences.length)];
+  playSentence(); // Play immediately on load
+  resultDiv.textContent = 'New sentence loaded. Listen and speak!';
+}
+
+async function fetchOneSentenceWithTimeout(ms = 4000) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ms);
+    const res = await fetch(API_URL, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data && data.content) return data.content;
+    throw new Error('Malformed response');
+  } catch (err) {
+    console.error('fetchOneSentenceWithTimeout:', err.name, err.message, 'URL:', API_URL);
+    logDebug('Fetch error: ' + (err && err.message ? err.message : err) + ' at ' + new Date().toLocaleTimeString());
+    return null;
+  }
+}
+
+function startListening() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert('Speech Recognition not supported. Use Chrome/Edge on desktop.');
+    return;
+  }
+
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+    console.warn('Not secure origin — microphone permissions may be blocked on some browsers.');
+    resultDiv.textContent = 'Note: For consistent microphone access use HTTPS or localhost.';
+  } else {
+    resultDiv.textContent = 'Listening… Please speak the sentence you heard.';
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.start();
+
+  recognition.onresult = function (event) {
+    const spoken = event.results[0][0].transcript;
+    analyzeSpeech(spoken);
+    playSentence(); // Play back after user speaks
+  };
+
+  recognition.onerror = function (ev) {
+    console.error('Speech recognition error', ev);
+    resultDiv.textContent = 'Speech recognition error: ' + (ev.error || 'unknown');
+  };
+
+  recognition.onend = function () {
+    // nothing
+  };
+}
+
+function playSentence() {
+  if (!currentSentence) {
+    resultDiv.textContent = 'No sentence to play. Click Next Sentence.';
+    return;
+  }
+  const utterance = new SpeechSynthesisUtterance(currentSentence);
+  utterance.lang = 'en-US';
+  utterance.volume = 1;
+  utterance.rate = 0.9; // Slow for clarity
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
+  resultDiv.textContent = 'Playing sentence…';
+}
+
+function analyzeSpeech(userSpeech) {
+  if (!currentSentence) {
+    resultDiv.textContent = 'No sentence to compare. Click Next Sentence.';
+    return;
+  }
+  const orig = normalize(currentSentence);
+  const spoken = normalize(userSpeech || '');
+  const similarity = wordMatchRatio(orig, spoken);
+  resultDiv.innerHTML = `<b>You said:</b> ${escapeHtml(userSpeech)}<br><b>Accuracy:</b> ${similarity.toFixed(1)}%`;
+}
+
+function normalize(s) {
+  return s.toLowerCase().replace(/[^\w\s']/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function wordMatchRatio(original, spoken) {
+  const oWords = original.split(' ').filter(Boolean);
+  const sWords = spoken.split(' ').filter(Boolean);
+  if (oWords.length === 0) return 0;
+  let matches = 0;
+  const sSet = new Set(sWords);
+  oWords.forEach(w => { if (sSet.has(w)) matches++; });
+  return (matches / oWords.length) * 100;
+}
+
+function logDebug(msg) {
+  debugPre.textContent += msg + '\n';
+  document.getElementById('debug').style.display = 'block';
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/[&<>"']/g, s => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[s]));
+}
+</script>
+</body>
+</html>
