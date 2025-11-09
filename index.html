@@ -31,7 +31,6 @@
     <div class="small">Tip: Open DevTools → Network to inspect API requests. Microphone requires HTTPS or localhost.</div>
     <div id="debug" style="display:none"><pre id="debugPre"></pre></div>
   </div>
-
 <script>
 /*
  Robust sentence loader:
@@ -39,11 +38,9 @@
   - stores a pool in localStorage
   - falls back to embedded list if necessary
 */
-
 const API_URL = 'https://api.quotable.io/random';
 const POOL_KEY = 'listening_sentence_pool_v1';
 const POOL_SIZE = 8;
-
 const fallbackSentences = [
   "The quick brown fox jumps over the lazy dog.",
   "Learning languages improves your brain and confidence.",
@@ -54,26 +51,20 @@ const fallbackSentences = [
   "Simple daily practice leads to steady improvement.",
   "Practice speaking slowly and clearly for better results."
 ];
-
 let pool = [];
 let currentSentence = "";
-
 const sentenceBox = document.getElementById('sentenceBox');
 const resultDiv = document.getElementById('result');
 const debugPre = document.getElementById('debugPre');
-
 document.getElementById('nextBtn').addEventListener('click', loadSentence);
 document.getElementById('speakBtn').addEventListener('click', startListening);
 document.getElementById('playBtn').addEventListener('click', playSentence);
-
 init();
-
 async function init() {
   const stored = localStorage.getItem(POOL_KEY);
   if (stored) {
     try { pool = JSON.parse(stored); } catch(e) { pool = []; }
   }
-
   if (!pool || pool.length < 1) {
     try {
       await prefillPool(POOL_SIZE);
@@ -81,10 +72,8 @@ async function init() {
       console.warn('Prefill failed:', err);
     }
   }
-
   loadSentence();
 }
-
 async function prefillPool(n) {
   const fetched = [];
   for (let i = 0; i < n; i++) {
@@ -100,7 +89,6 @@ async function prefillPool(n) {
   localStorage.setItem(POOL_KEY, JSON.stringify(pool));
   logDebug('Prefilled pool with ' + pool.length + ' sentences');
 }
-
 async function loadSentence() {
   resultDiv.textContent = '';
   try {
@@ -119,11 +107,9 @@ async function loadSentence() {
   } catch (err) {
     console.error('loadSentence error:', err);
   }
-
   currentSentence = fallbackSentences[Math.floor(Math.random() * fallbackSentences.length)];
   resultDiv.textContent = 'New sentence loaded. Click Play Again to listen, then Speak Now.';
 }
-
 async function fetchOneSentenceWithTimeout(ms = 4000) {
   try {
     const controller = new AbortController();
@@ -140,43 +126,35 @@ async function fetchOneSentenceWithTimeout(ms = 4000) {
     return null;
   }
 }
-
 function startListening() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
     alert('Speech Recognition not supported. Use Chrome/Edge on desktop.');
     return;
   }
-
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
     console.warn('Not secure origin — microphone permissions may be blocked on some browsers.');
     resultDiv.textContent = 'Note: For consistent microphone access use HTTPS or localhost.';
   } else {
     resultDiv.textContent = 'Listening… Please speak the sentence you heard.';
   }
-
   const recognition = new SpeechRecognition();
   recognition.lang = 'en-US';
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
   recognition.start();
-
   recognition.onresult = function (event) {
     const spoken = event.results[0][0].transcript;
-    analyzeSpeech(spoken);
-    playSentence(); // Play back only after user speaks
+    analyzeSpeech(spoken); // Only analyze, do not play sentence
   };
-
   recognition.onerror = function (ev) {
     console.error('Speech recognition error', ev);
     resultDiv.textContent = 'Speech recognition error: ' + (ev.error || 'unknown');
   };
-
   recognition.onend = function () {
     // nothing
   };
 }
-
 function playSentence() {
   if (!currentSentence) {
     resultDiv.textContent = 'No sentence to play. Click Next Sentence.';
@@ -188,11 +166,8 @@ function playSentence() {
   utterance.rate = 0.9; // Slow for clarity
   utterance.pitch = 1;
   window.speechSynthesis.speak(utterance);
-  if (resultDiv.textContent !== 'Listening… Please speak the sentence you heard.') {
-    resultDiv.textContent = 'Playing sentence…';
-  }
+  resultDiv.textContent = 'Playing sentence…';
 }
-
 function analyzeSpeech(userSpeech) {
   if (!currentSentence) {
     resultDiv.textContent = 'No sentence to compare. Click Next Sentence.';
@@ -203,11 +178,9 @@ function analyzeSpeech(userSpeech) {
   const similarity = wordMatchRatio(orig, spoken);
   resultDiv.innerHTML = `<b>You said:</b> ${escapeHtml(userSpeech)}<br><b>Accuracy:</b> ${similarity.toFixed(1)}%`;
 }
-
 function normalize(s) {
   return s.toLowerCase().replace(/[^\w\s']/g, '').replace(/\s+/g, ' ').trim();
 }
-
 function wordMatchRatio(original, spoken) {
   const oWords = original.split(' ').filter(Boolean);
   const sWords = spoken.split(' ').filter(Boolean);
@@ -217,12 +190,10 @@ function wordMatchRatio(original, spoken) {
   oWords.forEach(w => { if (sSet.has(w)) matches++; });
   return (matches / oWords.length) * 100;
 }
-
 function logDebug(msg) {
   debugPre.textContent += msg + '\n';
   document.getElementById('debug').style.display = 'block';
 }
-
 function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/[&<>"']/g, s => ({
