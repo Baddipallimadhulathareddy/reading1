@@ -96,19 +96,21 @@ async function loadSentence() {
       const s = await fetchOneSentenceWithTimeout(4000);
       if (s) {
         currentSentence = s;
+        resultDiv.textContent = 'New sentence loaded. Click Play Again to listen.';
         return;
       }
     } else {
       currentSentence = pool.shift();
       pool.push(currentSentence);
       localStorage.setItem(POOL_KEY, JSON.stringify(pool));
+      resultDiv.textContent = 'New sentence loaded. Click Play Again to listen.';
       return;
     }
   } catch (err) {
     console.error('loadSentence error:', err);
   }
   currentSentence = fallbackSentences[Math.floor(Math.random() * fallbackSentences.length)];
-  resultDiv.textContent = 'New sentence loaded. Click Play Again to listen, then Speak Now.';
+  resultDiv.textContent = 'New sentence loaded. Click Play Again to listen.';
 }
 async function fetchOneSentenceWithTimeout(ms = 4000) {
   try {
@@ -130,14 +132,17 @@ function startListening() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
     alert('Speech Recognition not supported. Use Chrome/Edge on desktop.');
+    resultDiv.textContent = 'Speech Recognition not supported. Use Chrome/Edge on desktop.';
     return;
   }
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
     console.warn('Not secure origin — microphone permissions may be blocked on some browsers.');
     resultDiv.textContent = 'Note: For consistent microphone access use HTTPS or localhost.';
-  } else {
-    resultDiv.textContent = 'Listening… Please speak the sentence you heard.';
+    return;
   }
+  // Stop any ongoing speech synthesis to prevent overlap
+  window.speechSynthesis.cancel();
+  resultDiv.textContent = 'Listening… Please speak the sentence you heard.';
   const recognition = new SpeechRecognition();
   recognition.lang = 'en-US';
   recognition.interimResults = false;
@@ -145,14 +150,16 @@ function startListening() {
   recognition.start();
   recognition.onresult = function (event) {
     const spoken = event.results[0][0].transcript;
-    analyzeSpeech(spoken); // Only analyze, do not play sentence
+    analyzeSpeech(spoken); // Analyze immediately after recording
   };
   recognition.onerror = function (ev) {
     console.error('Speech recognition error', ev);
     resultDiv.textContent = 'Speech recognition error: ' + (ev.error || 'unknown');
   };
   recognition.onend = function () {
-    // nothing
+    if (resultDiv.textContent === 'Listening… Please speak the sentence you heard.') {
+      resultDiv.textContent = 'Recording stopped. Click Speak Now to try again or Play Again to hear the sentence.';
+    }
   };
 }
 function playSentence() {
@@ -160,11 +167,16 @@ function playSentence() {
     resultDiv.textContent = 'No sentence to play. Click Next Sentence.';
     return;
   }
+  // Stop any ongoing speech synthesis to ensure clean playback
+  window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(currentSentence);
   utterance.lang = 'en-US';
   utterance.volume = 1;
   utterance.rate = 0.9; // Slow for clarity
   utterance.pitch = 1;
+  utterance.onend = function () {
+    resultDiv.textContent = 'Sentence played. Click Speak Now to record your response.';
+  };
   window.speechSynthesis.speak(utterance);
   resultDiv.textContent = 'Playing sentence…';
 }
